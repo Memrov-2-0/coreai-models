@@ -30,6 +30,10 @@ let package = Package(
             ]
         ),
         .library(
+            name: "CoreAISpeech",
+            targets: ["CoreAISpeech"]
+        ),
+        .library(
             name: "CoreAIObjectDetection",
             targets: [
                 "CoreAIObjectDetector"
@@ -80,6 +84,19 @@ let package = Package(
             name: "CoreAIShared",
             dependencies: [],
             path: "swift/Sources/CoreAIShared",
+            swiftSettings: [
+                .enableUpcomingFeature("MemberImportVisibility")
+            ]
+        ),
+
+        // Speech recognition library
+        .target(
+            name: "CoreAISpeech",
+            dependencies: [
+                "CoreAIShared",
+                .product(name: "Transformers", package: "swift-transformers"),
+            ],
+            path: "swift/Sources/CoreAISpeech",
             swiftSettings: [
                 .enableUpcomingFeature("MemberImportVisibility")
             ]
@@ -151,6 +168,17 @@ let package = Package(
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
             ],
             path: "swift/Sources/Tools/diffusion-runner",
+            swiftSettings: [
+                .enableUpcomingFeature("MemberImportVisibility")
+            ]
+        ),
+        .executableTarget(
+            name: "speech-runner",
+            dependencies: [
+                "CoreAISpeech",
+                .product(name: "ArgumentParser", package: "swift-argument-parser"),
+            ],
+            path: "swift/Sources/Tools/speech-runner",
             swiftSettings: [
                 .enableUpcomingFeature("MemberImportVisibility")
             ]
