@@ -7,10 +7,13 @@
 
 import json
 import logging
+import shutil
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from huggingface_hub import hf_hub_download
+from huggingface_hub.errors import EntryNotFoundError, HfHubHTTPError
 from transformers import AutoTokenizer
 
 logger = logging.getLogger(__name__)
@@ -30,6 +33,7 @@ def bundle_llm_asset(
     Expects ``{name}.aimodel`` to already exist inside bundle_path.
     """
     _write_tokenizer(bundle_path / "tokenizer", hf_model_id)
+    _write_generation_config(bundle_path / "generation_config.json", hf_model_id)
     _write_metadata(bundle_path, hf_model_id, hf_config, compression, name)
 
 
@@ -37,6 +41,24 @@ def _write_tokenizer(dest: Path, hf_model_id: str) -> None:
     logger.info(f"Saving tokenizer from {hf_model_id}...")
     tokenizer = AutoTokenizer.from_pretrained(hf_model_id)
     tokenizer.save_pretrained(str(dest))
+
+
+def _write_generation_config(dest: Path, hf_model_id: str) -> None:
+    """Preserve a model's optional Hugging Face generation configuration."""
+    local_source = Path(hf_model_id) / "generation_config.json"
+    try:
+        source = (
+            local_source
+            if local_source.is_file()
+            else Path(hf_hub_download(repo_id=hf_model_id, filename="generation_config.json"))
+        )
+    except (EntryNotFoundError, HfHubHTTPError, OSError) as error:
+        logger.info("No generation_config.json available for %s: %s", hf_model_id, error)
+        return
+
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(source, dest)
+    logger.info("Preserved generation configuration at %s", dest)
 
 
 def _write_metadata(

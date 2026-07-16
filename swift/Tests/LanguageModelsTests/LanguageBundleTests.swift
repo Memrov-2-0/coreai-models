@@ -122,6 +122,65 @@ struct LanguageBundleTests {
         #expect(bundle.language.functionMap == nil)
     }
 
+    @Test("generation_config.json supplies model-owned sampling defaults")
+    func generationConfigSuppliesSamplingDefaults() throws {
+        let url = try Self.tempBundle(
+            """
+            {
+              "metadata_version": "0.2",
+              "kind": "llm",
+              "name": "qwen2.5-1.5b",
+              "assets": { "main": "model.aimodel" },
+              "language": {
+                "tokenizer": "Qwen/Qwen2.5-1.5B-Instruct",
+                "vocab_size": 151936,
+                "max_context_length": 4096
+              }
+            }
+            """)
+        try """
+        {
+          "do_sample": true,
+          "temperature": 0.7,
+          "top_k": 20,
+          "top_p": 0.8,
+          "repetition_penalty": 1.1
+        }
+        """.write(
+            to: url.appending(path: "generation_config.json"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        let sampling = try LanguageBundle(at: url).samplingConfiguration
+
+        #expect(sampling.temperature == 0.7)
+        #expect(sampling.topK == 20)
+        #expect(sampling.topP == 0.8)
+    }
+
+    @Test("Bundle without generation_config.json retains greedy sampling")
+    func missingGenerationConfigRetainsGreedySampling() throws {
+        let url = try Self.tempBundle(
+            """
+            {
+              "metadata_version": "0.2",
+              "kind": "llm",
+              "name": "minimal",
+              "assets": { "main": "model.aimodel" },
+              "language": {
+                "tokenizer": "x/y",
+                "vocab_size": 100,
+                "max_context_length": 512
+              }
+            }
+            """)
+
+        let sampling = try LanguageBundle(at: url).samplingConfiguration
+
+        #expect(sampling.isGreedy)
+    }
+
     @Test("user_data round-trips as [String: String]")
     func userDataRoundTrip() throws {
         let url = try Self.tempBundle(
