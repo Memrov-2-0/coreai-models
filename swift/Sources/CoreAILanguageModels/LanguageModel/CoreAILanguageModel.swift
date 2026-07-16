@@ -106,7 +106,7 @@ public struct CoreAILanguageModel: LanguageModel {
             variant: variant,
             kvCacheStrategy: kvCacheStrategy,
             modelIdentifier: bundle.name,
-            samplingConfig: .greedy,
+            samplingConfig: bundle.samplingConfiguration,
             vocabSize: bundle.vocabSize
         )
         let resources = ModelResources.shared(for: configuration)
