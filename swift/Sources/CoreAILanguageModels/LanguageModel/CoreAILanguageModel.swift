@@ -280,10 +280,11 @@ public struct CoreAILanguageModel: LanguageModel {
         ) async throws {
             // Tokenization span
             let tokenizationSpan = InstrumentsProfiler.beginTokenization(inputLength: 0)
-            let promptTokens = Self.makeTokens(
+            let promptTokens = try Self.makeTokens(
                 from: Array(request.transcript),
                 using: model.tokenizer,
                 tools: request.enabledToolDefinitions,
+                contextOptions: request.contextOptions,
                 component: "CoreAIExecutor"
             )
             guard !promptTokens.isEmpty else {
@@ -637,8 +638,9 @@ public struct CoreAILanguageModel: LanguageModel {
             from entries: [Transcript.Entry],
             using tokenizer: any Tokenizer,
             tools: [Transcript.ToolDefinition] = [],
+            contextOptions: ContextOptions = ContextOptions(),
             component: String = "CoreAIExecutor"
-        ) -> [Int] {
+        ) throws -> [Int] {
             var messages: [Message] = []
 
             for entry in entries {
@@ -690,13 +692,17 @@ public struct CoreAILanguageModel: LanguageModel {
 
             do {
                 CLILogger.log("Applying chat template via tokenizer", component: component)
-                return try tokenizer.applyChatTemplate(messages: messages, tools: toolSpecs)
+                return try tokenizer.applyChatTemplate(
+                    messages: messages,
+                    tools: toolSpecs,
+                    additionalContext: [
+                        "enable_thinking": contextOptions.reasoningLevel != nil
+                    ]
+                )
             } catch {
-                CLILogger.log(
-                    "Failed to apply chat template: \(error), falling back to simple encoding",
-                    component: component)
-                let text = messages.compactMap { $0["content"] as? String }.joined(separator: "\n")
-                return tokenizer.encode(text: text)
+                throw CoreAILanguageModelError.chatTemplateApplicationFailed(
+                    reason: error.localizedDescription
+                )
             }
         }
 

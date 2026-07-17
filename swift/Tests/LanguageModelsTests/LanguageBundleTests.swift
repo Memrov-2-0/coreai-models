@@ -11,7 +11,18 @@ import Testing
 
 @Suite("LanguageBundle")
 struct LanguageBundleTests {
-    private static func tempBundle(_ metadata: String, named name: String = "test") throws -> URL {
+    private static let defaultGenerationConfiguration =
+        """
+        {
+          "do_sample": false
+        }
+        """
+
+    private static func tempBundle(
+        _ metadata: String,
+        named name: String = "test",
+        generationConfiguration: String? = defaultGenerationConfiguration
+    ) throws -> URL {
         let dir = FileManager.default.temporaryDirectory.appending(
             path: "LanguageBundleTests-\(UUID().uuidString)/\(name)"
         )
@@ -20,6 +31,13 @@ struct LanguageBundleTests {
             to: dir.appending(path: "metadata.json"),
             atomically: true, encoding: .utf8
         )
+        if let generationConfiguration {
+            try generationConfiguration.write(
+                to: dir.appending(path: "generation_config.json"),
+                atomically: true,
+                encoding: .utf8
+            )
+        }
         return dir
     }
 
@@ -159,8 +177,8 @@ struct LanguageBundleTests {
         #expect(sampling.topP == 0.8)
     }
 
-    @Test("Bundle without generation_config.json retains greedy sampling")
-    func missingGenerationConfigRetainsGreedySampling() throws {
+    @Test("Bundle without generation_config.json throws a typed error")
+    func missingGenerationConfigThrows() throws {
         let url = try Self.tempBundle(
             """
             {
@@ -174,11 +192,37 @@ struct LanguageBundleTests {
                 "max_context_length": 512
               }
             }
-            """)
+            """,
+            generationConfiguration: nil
+        )
 
-        let sampling = try LanguageBundle(at: url).samplingConfiguration
+        #expect(throws: CoreAILanguageModelError.self) {
+            _ = try LanguageBundle(at: url)
+        }
+    }
 
-        #expect(sampling.isGreedy)
+    @Test("Invalid generation_config.json throws a typed error")
+    func invalidGenerationConfigThrows() throws {
+        let url = try Self.tempBundle(
+            """
+            {
+              "metadata_version": "0.2",
+              "kind": "llm",
+              "name": "minimal",
+              "assets": { "main": "model.aimodel" },
+              "language": {
+                "tokenizer": "x/y",
+                "vocab_size": 100,
+                "max_context_length": 512
+              }
+            }
+            """,
+            generationConfiguration: "{ \"do_sample\": true, \"temperature\": 0 }"
+        )
+
+        #expect(throws: CoreAILanguageModelError.self) {
+            _ = try LanguageBundle(at: url)
+        }
     }
 
     @Test("user_data round-trips as [String: String]")
