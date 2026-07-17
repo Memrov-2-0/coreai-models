@@ -21,6 +21,10 @@ logger = logging.getLogger(__name__)
 METADATA_VERSION = "0.2"
 
 
+class GenerationConfigurationError(RuntimeError):
+    """Raised when an LLM bundle lacks a usable generation configuration."""
+
+
 def bundle_llm_asset(
     bundle_path: Path,
     hf_model_id: str,
@@ -32,8 +36,8 @@ def bundle_llm_asset(
 
     Expects ``{name}.aimodel`` to already exist inside bundle_path.
     """
-    _write_tokenizer(bundle_path / "tokenizer", hf_model_id)
     _write_generation_config(bundle_path / "generation_config.json", hf_model_id)
+    _write_tokenizer(bundle_path / "tokenizer", hf_model_id)
     _write_metadata(bundle_path, hf_model_id, hf_config, compression, name)
 
 
@@ -44,7 +48,7 @@ def _write_tokenizer(dest: Path, hf_model_id: str) -> None:
 
 
 def _write_generation_config(dest: Path, hf_model_id: str) -> None:
-    """Preserve a model's optional Hugging Face generation configuration."""
+    """Preserve and validate a model's required generation configuration."""
     local_source = Path(hf_model_id) / "generation_config.json"
     try:
         source = (
@@ -53,8 +57,21 @@ def _write_generation_config(dest: Path, hf_model_id: str) -> None:
             else Path(hf_hub_download(repo_id=hf_model_id, filename="generation_config.json"))
         )
     except (EntryNotFoundError, HfHubHTTPError, OSError) as error:
-        logger.info("No generation_config.json available for %s: %s", hf_model_id, error)
-        return
+        raise GenerationConfigurationError(
+            f"{hf_model_id} is missing required generation_config.json"
+        ) from error
+
+    try:
+        payload = json.loads(source.read_text())
+    except (OSError, json.JSONDecodeError) as error:
+        raise GenerationConfigurationError(
+            f"{hf_model_id} has an unreadable generation_config.json"
+        ) from error
+
+    if not isinstance(payload, dict) or not isinstance(payload.get("do_sample"), bool):
+        raise GenerationConfigurationError(
+            f"{hf_model_id} generation_config.json must contain boolean do_sample"
+        )
 
     dest.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(source, dest)

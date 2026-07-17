@@ -295,6 +295,17 @@ struct TempFile {
 /// - encode("Answer: B") → [..., 200] where 200 is " B" merged token
 /// - decode([200]) → " B"
 struct MergingMockTokenizer: Tokenizer, Sendable {
+    let contextRecorder: ChatTemplateContextRecorder?
+    let failChatTemplate: Bool
+
+    init(
+        contextRecorder: ChatTemplateContextRecorder? = nil,
+        failChatTemplate: Bool = false
+    ) {
+        self.contextRecorder = contextRecorder
+        self.failChatTemplate = failChatTemplate
+    }
+
     // MARK: - Properties
     var bosToken: String? { nil }
     var bosTokenId: Int? { nil }
@@ -395,18 +406,20 @@ struct MergingMockTokenizer: Tokenizer, Sendable {
     // MARK: - Chat template methods
 
     func applyChatTemplate(messages: [Tokenizers.Message]) throws -> [Int] {
+        if failChatTemplate { throw TokenizerError.missingChatTemplate }
         let combined = messages.compactMap { $0["content"] as? String }.joined(separator: " ")
         return encode(text: combined)
     }
 
     func applyChatTemplate(messages: [Tokenizers.Message], tools: [Tokenizers.ToolSpec]?) throws -> [Int] {
-        try applyChatTemplate(messages: messages)
+        return try applyChatTemplate(messages: messages)
     }
 
     func applyChatTemplate(
         messages: [Tokenizers.Message], tools: [Tokenizers.ToolSpec]?, additionalContext: [String: any Sendable]?
     ) throws -> [Int] {
-        try applyChatTemplate(messages: messages)
+        contextRecorder?.record(enableThinking: additionalContext?["enable_thinking"] as? Bool)
+        return try applyChatTemplate(messages: messages)
     }
 
     func applyChatTemplate(messages: [Tokenizers.Message], chatTemplate: Tokenizers.ChatTemplateArgument) throws
@@ -436,5 +449,17 @@ struct MergingMockTokenizer: Tokenizer, Sendable {
     func applyChatTemplate(messages: [[String: String]]) throws -> [Int] {
         let combined = messages.compactMap { $0["content"] }.joined(separator: " ")
         return encode(text: combined)
+    }
+}
+
+final class ChatTemplateContextRecorder: @unchecked Sendable {
+    private let storage = Mutex<Bool?>(nil)
+
+    var enableThinking: Bool? {
+        storage.withLock { $0 }
+    }
+
+    func record(enableThinking: Bool?) {
+        storage.withLock { $0 = enableThinking }
     }
 }

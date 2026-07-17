@@ -22,7 +22,8 @@ public struct LanguageBundle: Sendable {
     public let modelAssetPath: String
     public let language: LanguageConfig
     public let visionConfig: VisionConfig?
-    public let generationConfiguration: LanguageGenerationConfiguration?
+    public let generationConfiguration: LanguageGenerationConfiguration
+    public let samplingConfiguration: SamplingConfiguration
 
     public init(from path: String) throws {
         let expanded = (path as NSString).expandingTildeInPath
@@ -49,10 +50,26 @@ public struct LanguageBundle: Sendable {
         self.language = language
         self.visionConfig = payload.vision
         let generationConfigURL = bundle.bundlePath.appending(path: "generation_config.json")
-        self.generationConfiguration = try? JSONDecoder().decode(
-            LanguageGenerationConfiguration.self,
-            from: Data(contentsOf: generationConfigURL)
-        )
+        guard FileManager.default.fileExists(atPath: generationConfigURL.path) else {
+            throw CoreAILanguageModelError.missingGenerationConfiguration(
+                path: generationConfigURL.path
+            )
+        }
+        do {
+            let generationConfiguration = try JSONDecoder().decode(
+                LanguageGenerationConfiguration.self,
+                from: Data(contentsOf: generationConfigURL)
+            )
+            self.generationConfiguration = generationConfiguration
+            self.samplingConfiguration = try generationConfiguration.validatedSamplingConfiguration()
+        } catch let error as CoreAILanguageModelError {
+            throw error
+        } catch {
+            throw CoreAILanguageModelError.invalidGenerationConfiguration(
+                path: generationConfigURL.path,
+                reason: error.localizedDescription
+            )
+        }
 
         if bundle.kind == .vlm && self.visionConfig == nil {
             throw ModelBundle.BundleError.missingField("vision")
@@ -66,10 +83,6 @@ public struct LanguageBundle: Sendable {
     public var tokenizer: String { language.tokenizer }
     public var vocabSize: Int { language.vocabSize }
     public var maxContextLength: Int { language.maxContextLength }
-    public var samplingConfiguration: SamplingConfiguration {
-        generationConfiguration?.samplingConfiguration ?? .greedy
-    }
-
     /// Raw metadata bytes for passing to engine config parsers.
     public var rawMetadata: Data { bundle.raw }
 

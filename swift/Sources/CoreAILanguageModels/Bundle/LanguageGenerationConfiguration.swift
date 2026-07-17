@@ -8,6 +8,29 @@ import Foundation
 /// Model-owned generation defaults preserved from a Hugging Face
 /// `generation_config.json` file.
 public struct LanguageGenerationConfiguration: Decodable, Sendable {
+    public enum ValidationError: Error, LocalizedError, Sendable, Equatable {
+        case missingDoSample
+        case invalidTemperature(Double?)
+        case invalidTopK(Int)
+        case invalidTopP(Double)
+        case invalidMinP(Double)
+
+        public var errorDescription: String? {
+            switch self {
+            case .missingDoSample:
+                "do_sample is required"
+            case .invalidTemperature(let value):
+                "temperature must be finite and greater than zero when sampling; got \(String(describing: value))"
+            case .invalidTopK(let value):
+                "top_k must be greater than zero; got \(value)"
+            case .invalidTopP(let value):
+                "top_p must be finite and in (0, 1]; got \(value)"
+            case .invalidMinP(let value):
+                "min_p must be finite and in (0, 1]; got \(value)"
+            }
+        }
+    }
+
     public let doSample: Bool?
     public let temperature: Double?
     public let topK: Int?
@@ -28,28 +51,25 @@ public struct LanguageGenerationConfiguration: Decodable, Sendable {
 
     /// Converts the supported model defaults into Core AI's native sampler.
     /// Unsupported values remain available on this type for future runtimes.
-    public var samplingConfiguration: SamplingConfiguration {
-        guard doSample != false else { return .greedy }
-
-        let resolvedTemperature: Double
-        if let temperature, temperature.isFinite, temperature >= 0 {
-            resolvedTemperature = temperature
-        } else if doSample == true {
-            resolvedTemperature = 1
-        } else {
-            return .greedy
+    public func validatedSamplingConfiguration() throws -> SamplingConfiguration {
+        guard let doSample else { throw ValidationError.missingDoSample }
+        guard doSample else { return .greedy }
+        guard let temperature, temperature.isFinite, temperature > 0 else {
+            throw ValidationError.invalidTemperature(temperature)
+        }
+        if let topK, topK <= 0 { throw ValidationError.invalidTopK(topK) }
+        if let topP, !topP.isFinite || topP <= 0 || topP > 1 {
+            throw ValidationError.invalidTopP(topP)
+        }
+        if let minP, !minP.isFinite || minP <= 0 || minP > 1 {
+            throw ValidationError.invalidMinP(minP)
         }
 
-        guard resolvedTemperature > 0 else { return .greedy }
-        let resolvedTopK = topK.flatMap { $0 > 0 ? $0 : nil }
-        let resolvedTopP = topP.flatMap { $0.isFinite && $0 > 0 && $0 <= 1 ? $0 : nil }
-        let resolvedMinP = minP.flatMap { $0.isFinite && $0 > 0 && $0 <= 1 ? $0 : nil }
-
         return SamplingConfiguration(
-            temperature: resolvedTemperature,
-            topK: resolvedTopK,
-            topP: resolvedTopP,
-            minP: resolvedMinP
+            temperature: temperature,
+            topK: topK,
+            topP: topP,
+            minP: minP
         )
     }
 }
