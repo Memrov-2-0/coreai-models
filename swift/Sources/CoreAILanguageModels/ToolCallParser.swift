@@ -22,6 +22,15 @@ struct ToolCallParser {
         self.closeMarker = closeMarker
     }
 
+    static func whenToolsEnabled(
+        openMarker: String,
+        closeMarker: String,
+        toolsAreEnabled: Bool
+    ) -> ToolCallParser? {
+        guard toolsAreEnabled else { return nil }
+        return ToolCallParser(openMarker: openMarker, closeMarker: closeMarker)
+    }
+
     mutating func consume(_ delta: String) -> [Event] {
         buffer.append(delta)
         return drain(isFinal: false)
