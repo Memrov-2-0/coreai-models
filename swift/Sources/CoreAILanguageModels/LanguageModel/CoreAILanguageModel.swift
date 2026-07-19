@@ -338,6 +338,7 @@ public struct CoreAILanguageModel: LanguageModel {
                         promptTokens: promptTokens,
                         samplingConfig: effectiveSamplingConfig,
                         maxTokens: maxTokens,
+                        toolsAreEnabled: !request.enabledToolDefinitions.isEmpty,
                         channel: channel
                     )
                 }
@@ -352,6 +353,7 @@ public struct CoreAILanguageModel: LanguageModel {
             promptTokens: [Int],
             samplingConfig: SamplingConfiguration,
             maxTokens: Int,
+            toolsAreEnabled: Bool,
             channel: LanguageModelExecutorGenerationChannel
         ) async throws {
             let tokenizer = model.tokenizer
@@ -387,9 +389,12 @@ public struct CoreAILanguageModel: LanguageModel {
                 close: model.thinkingMarkers.close
             )
             // Routes tool call markup to .toolCalls(...) channel events.
-            // nil when the model's tokenizer has no tool call tokens.
-            var toolCallParser: ToolCallParser? = model.toolCallMarkers.map {
-                ToolCallParser(openMarker: $0.open, closeMarker: $0.close)
+            // Keep plain chat as plain chat: tokenizer support alone must not
+            // activate tool parsing when Foundation Models enabled no tools.
+            var toolCallParser: ToolCallParser? = model.toolCallMarkers.flatMap {
+                ToolCallParser.whenToolsEnabled(
+                    openMarker: $0.open, closeMarker: $0.close,
+                    toolsAreEnabled: toolsAreEnabled)
             }
             var generatedTokenCount: Int = 0
             var reasoningTokenCount: Int = 0
