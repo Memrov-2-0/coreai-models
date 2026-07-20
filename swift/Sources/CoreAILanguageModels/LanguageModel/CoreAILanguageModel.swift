@@ -300,7 +300,7 @@ public struct CoreAILanguageModel: LanguageModel {
 
             CLILogger.log("Tokenized \(promptTokens.count) tokens", component: "CoreAIExecutor")
 
-            let effectiveSamplingConfig = makeSamplingConfig(
+            let effectiveSamplingConfig = Self.makeSamplingConfig(
                 from: request.generationOptions, base: model.samplingConfig)
             let defaultMaxTokens = model.supportsReasoning ? 2048 : 512
             let maxTokens = request.generationOptions.maximumResponseTokens ?? defaultMaxTokens
@@ -775,12 +775,18 @@ public struct CoreAILanguageModel: LanguageModel {
 
         // MARK: - Helper Methods
 
-        private func makeSamplingConfig(
+        static func makeSamplingConfig(
             from options: GenerationOptions,
             base: SamplingConfiguration
         ) -> SamplingConfiguration {
             if let temperature = options.temperature {
-                return SamplingConfiguration(temperature: temperature)
+                return SamplingConfiguration(
+                    temperature: temperature,
+                    topK: base.topK,
+                    topP: base.topP,
+                    minP: base.minP,
+                    combined: base.combined
+                )
             }
             return base
         }
