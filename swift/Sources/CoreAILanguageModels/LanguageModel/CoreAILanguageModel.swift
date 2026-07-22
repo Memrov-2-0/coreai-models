@@ -396,8 +396,6 @@ public struct CoreAILanguageModel: LanguageModel {
                     openMarker: $0.open, closeMarker: $0.close,
                     toolsAreEnabled: toolsAreEnabled)
             }
-            var generatedTokenCount: Int = 0
-            var reasoningTokenCount: Int = 0
 
             for try await output in tokenStream {
                 let token = output.tokenId
@@ -408,7 +406,6 @@ public struct CoreAILanguageModel: LanguageModel {
 
                 pendingTokens.append(token)
                 tokenStep += 1
-                generatedTokenCount += 1
 
                 let decodeSpan = InstrumentsProfiler.beginDecode(step: tokenStep)
                 let decodedText = tokenizer.decode(tokens: pendingTokens.map { Int($0) })
@@ -437,7 +434,6 @@ public struct CoreAILanguageModel: LanguageModel {
                 }
 
                 for event in thinkParser.consume(delta) {
-                    if case .reasoning = event { reasoningTokenCount += 1 }
                     await dispatch(event: event, toolCallParser: &toolCallParser, channel: channel)
                 }
 
@@ -471,15 +467,6 @@ public struct CoreAILanguageModel: LanguageModel {
                 toolCallParser = tcp
             }
 
-            await channel.send(
-                .response(
-                    action: .updateUsage(
-                        input: .init(totalTokenCount: promptTokens.count, cachedTokenCount: 0),
-                        output: .init(
-                            totalTokenCount: generatedTokenCount,
-                            reasoningTokenCount: reasoningTokenCount
-                        )
-                    )))
 
             // Yield to let the engine's tokenSequence Task finish cleanup
             // (putBackEngine, state reset, etc.) before the next respond().
@@ -583,23 +570,12 @@ public struct CoreAILanguageModel: LanguageModel {
             )
 
             // Bridge AsyncThrowingStream -> LanguageModelExecutorGenerationChannel
-            var generatedTokenCount = 0
             for try await result in stream {
-                generatedTokenCount += 1
                 await channel.send(
                     .response(action: .appendText(result.text, tokenCount: 1))
                 )
             }
 
-            await channel.send(
-                .response(
-                    action: .updateUsage(
-                        input: .init(totalTokenCount: promptTokens.count, cachedTokenCount: 0),
-                        output: .init(
-                            totalTokenCount: generatedTokenCount,
-                            reasoningTokenCount: 0
-                        )
-                    )))
 
             // Yield to let the engine's tokenSequence Task finish cleanup
             // (putBackEngine, state reset, etc.) before the next respond().
