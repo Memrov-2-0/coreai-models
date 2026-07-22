@@ -168,12 +168,10 @@ public struct CoreAIVLMExecutor: LanguageModelExecutor {
             inferenceOptions: InferenceOptions(maxTokens: maxTokens, includeLogits: false)
         )
 
-        var generatedCount = 0
         var pendingTokens: [Int] = []
         var previousText = ""
         for try await output in stream {
             if stopTokens.contains(output.tokenId) { break }
-            generatedCount += 1
             pendingTokens.append(Int(output.tokenId))
 
             let decoded = tokenizer.decode(tokens: pendingTokens)
@@ -192,12 +190,6 @@ public struct CoreAIVLMExecutor: LanguageModelExecutor {
             }
         }
 
-        await channel.send(
-            .response(
-                action: .updateUsage(
-                    input: .init(totalTokenCount: promptTokens.count, cachedTokenCount: 0),
-                    output: .init(totalTokenCount: generatedCount, reasoningTokenCount: 0)
-                )))
     }
 
     // MARK: - Prompt Construction
